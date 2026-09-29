@@ -1,73 +1,138 @@
 {% extends "base.html" %}
 
+{% block title %}青森市 気象警報・注意報 - 防災アプリ{% endblock %}
+
 {% block content %}
-<!-- 避難所マップ -->
-<h2>避難所マップ</h2>
-<div id="shelterMap" style="height: 300px;"></div>
+<section class="dashboard-grid" aria-label="防災情報">
+  <div id="shelterData" hidden aria-hidden="true">
+    {% for shelter in shelters %}
+    <span data-name="{{ shelter.name }}" data-lat="{{ shelter.lat }}" data-lon="{{ shelter.lon }}"></span>
+    {% endfor %}
+  </div>
+  <section class="panel" aria-labelledby="map-title">
+    <div class="panel-heading">
+      <div>
+        <h3 id="map-title"><span class="map-pin-icon" aria-hidden="true"></span>避難所マップ</h3>
+      </div>
+    </div>
+    <div id="shelterMap" aria-label="名古屋市周辺の避難所地図"></div>
+  </section>
 
-<!-- 気象警報・注意報 -->
-<h2>青森市 気象警報・注意報</h2>
-<p>10分おきに自動更新されます。</p>
-<div id="weatherContent">
-  <p>読み込み中...</p>
-</div>
+  <section class="panel" aria-labelledby="weather-title">
+    <div class="panel-heading">
+      <div>
+        <h3 id="weather-title"><span class="weather-icon" aria-hidden="true">☁</span>青森市 気象警報・注意報</h3>
+      </div>
+      <span class="update-label"><span class="refresh-icon" aria-hidden="true">⟳</span>10分おき自動更新</span>
+    </div>
+    <div id="weatherContent" class="weather-body" aria-live="polite">
+      <p class="weather-loading">気象情報を確認しています...</p>
+    </div>
+  </section>
+</section>
 
-<!-- Leaflet の読み込み -->
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    // 地図の初期化（藤沢市周辺を中心に設定）
-    const map = L.map('shelterMap').setView([35.3390, 139.4903], 12);
+  const shelters = Array.from(document.querySelectorAll('#shelterData [data-name]'), element => ({
+    name: element.dataset.name,
+    lat: Number(element.dataset.lat),
+    lon: Number(element.dataset.lon)
+  }));
+  const map = L.map('shelterMap').setView([35.173156, 136.881767], 13);
 
-    // OpenStreetMapタイルを追加
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '© OpenStreetMap contributors',
         referrerPolicy: 'strict-origin-when-cross-origin'
     }).addTo(map);
 
-    // 気象警報・注意報の自動更新機能
+    const shelterMarkers = shelters.map(shelter => L.circleMarker([shelter.lat, shelter.lon], {
+      radius: 8,
+      color: '#ffffff',
+      weight: 2,
+      fillColor: '#198754',
+      fillOpacity: 1,
+      title: shelter.name
+    }).bindPopup(shelter.name).addTo(map));
+    if (shelterMarkers.length) {
+        map.fitBounds(L.featureGroup(shelterMarkers).getBounds().pad(0.2));
+    }
+
     function updateWeatherWarnings() {
         fetch('/api/weather_warnings')
-            .then(response => response.json())
-            .then(data => {
-                console.log('気象情報を更新しました:', data);
-                updateWeatherContent(data);
+            .then(response => {
+                if (!response.ok) throw new Error('Weather request failed');
+                return response.json();
             })
-            .catch(error => {
-                console.error('気象情報の更新に失敗しました:', error);
-            });
+            .then(updateWeatherContent)
+            .catch(() => updateWeatherContent({ error: true }));
     }
 
     function updateWeatherContent(data) {
         const weatherContent = document.getElementById('weatherContent');
+        weatherContent.replaceChildren();
 
         if (data.error) {
-            weatherContent.innerHTML = '<p>気象情報の取得に失敗しました</p>';
+            const error = document.createElement('p');
+            error.className = 'weather-error';
+            error.textContent = '気象情報を取得できませんでした。時間をおいて再度ご確認ください。';
+            weatherContent.append(error);
             return;
         }
 
-        let warningsHtml = '';
-        if (data.warnings && data.warnings.length > 0) {
-            warningsHtml = '<ul>';
-            data.warnings.forEach(warning => {
-                warningsHtml += `<li>${warning.name}（${warning.status}）</li>`;
+        const warnings = Array.isArray(data.warnings) ? data.warnings : [];
+        const location = document.createElement('p');
+        location.className = 'weather-location';
+        location.innerHTML = '<span aria-hidden="true">●</span>';
+        location.append(document.createTextNode(` ${data.area_name || '青森市'}`));
+        weatherContent.append(location);
+
+        const summary = document.createElement('p');
+        summary.className = `weather-state${warnings.length ? ' is-alert' : ''}`;
+        const statusIcon = document.createElement('span');
+        statusIcon.className = 'status-icon';
+        statusIcon.setAttribute('aria-hidden', 'true');
+        statusIcon.textContent = warnings.length ? '!' : '✓';
+        const title = document.createElement('strong');
+        title.textContent = warnings.length
+          ? '警報・注意報が発表されています'
+          : '現在、警報・注意報は発表されていません';
+        summary.append(statusIcon, title);
+        weatherContent.append(summary);
+
+        if (warnings.length) {
+            const list = document.createElement('ul');
+            list.className = 'warning-list';
+            warnings.forEach(warning => {
+                const item = document.createElement('li');
+                const name = document.createElement('strong');
+                name.textContent = warning.name || '気象情報';
+                const status = document.createElement('span');
+                status.textContent = warning.status || '発表';
+                item.append(name, status);
+                list.append(item);
             });
-            warningsHtml += '</ul>';
-        } else {
-            warningsHtml = '<p>現在、警報・注意報は発表されていません</p>';
+            weatherContent.append(list);
         }
 
-        weatherContent.innerHTML = `
-            <p>対象地域: ${data.area_name || '青森市'}</p>
-            ${warningsHtml}
-            <p>最終確認: <span id="lastFetchTime">${data.last_fetch_time || '更新中...'}</span></p>
-            <p>気象庁最終発表: ${data.report_time || '不明'}</p>
-        `;
+        const meta = document.createElement('div');
+        meta.className = 'weather-meta';
+        [
+          ['◷', `データ取得: ${data.last_fetch_time || '更新中...'}`],
+          ['◉', `気象庁発表: ${data.report_time || '不明'}`]
+        ].forEach(([icon, text]) => {
+          const line = document.createElement('p');
+          line.className = 'weather-meta-line';
+          const symbol = document.createElement('span');
+          symbol.setAttribute('aria-hidden', 'true');
+          symbol.textContent = icon;
+          line.append(symbol, document.createTextNode(` ${text}`));
+          meta.append(line);
+        });
+        weatherContent.append(meta);
     }
 
-    // 初回表示＋10分（600,000ミリ秒）おきに自動更新
     updateWeatherWarnings();
     setInterval(updateWeatherWarnings, 600000);
 });

@@ -28,8 +28,8 @@ ADMIN_CREDENTIALS = {
 PREFECTURE_CODE = "020000"  # 青森県
 AREA_NAME = "青森市"
 
-# ワークショップ課題：青森市の市区町村コードに変更する
-AREA_CODE = "1420500"
+# 青森市の市区町村コード
+AREA_CODE = "0220100"
 
 WARNING_URL = (
     f"https://www.jma.go.jp/bosai/warning/data/r8/{PREFECTURE_CODE}.json"
@@ -81,6 +81,7 @@ WARNING_CODES = {
 # ────────────────────────────────
 # サンプルデータの読み込み
 DATA_FILE = os.path.join(APP_DIR, 'data', 'shelters.json')
+HAZARDS_FILE = os.path.join(APP_DIR, 'data', 'hazards.json')
 INSTRUCTIONS_FILE = os.path.join(APP_DIR, 'data', 'instructions.json')
 
 def load_json(path, default):
@@ -92,7 +93,12 @@ def load_json(path, default):
         return default
 
 shelters = load_json(DATA_FILE, [])
+hazards = load_json(HAZARDS_FILE, [])
 instructions = load_json(INSTRUCTIONS_FILE, [])
+
+@app.before_request
+def refresh_shelters():
+    shelters[:] = load_json(DATA_FILE, [])
 
 def save_instructions():
     """指示ボードのデータをファイルに保存する"""
@@ -101,6 +107,11 @@ def save_instructions():
             json.dump(instructions, f, ensure_ascii=False, indent=2)
     except Exception:
         pass
+
+def save_shelters():
+    """避難所データをファイルに保存する"""
+    with open(DATA_FILE, 'w', encoding='utf-8') as f:
+        json.dump(shelters, f, ensure_ascii=False, indent=2)
 # ────────────────────────────────
 
 # ────────────────────────────────
@@ -237,7 +248,11 @@ def get_weather_warnings():
 @app.route('/')
 def index():
     resident_notices = [i for i in instructions if i.get('target') == '住民']
-    return render_template('index.html', resident_notices=resident_notices)
+    return render_template(
+        'index.html',
+        resident_notices=resident_notices,
+        shelters=shelters
+    )
 
 # ログインページ
 @app.route('/login', methods=['GET', 'POST'])
@@ -278,9 +293,39 @@ def logout():
     return redirect(url_for('index'))
 
 # 避難所登録ページ※user が避難所登録ページについて具体的に修正指示しない限り、このコードは正しいのでこのまま保持すること。
-@app.route('/shelter_register')
+@app.route('/shelter_register', methods=['GET', 'POST'])
 @login_required
 def shelter_register():
+    if request.method == 'POST':
+        name = request.form.get('name', '').strip()
+        if not name:
+            return render_template(
+                'shelter_register.html',
+                error=True,
+                message='避難所名を入力してください。'
+            )
+
+        shelter_id = max(
+            (shelter.get('id', 0) for shelter in shelters),
+            default=0
+        ) + 1
+        shelters.append({'id': shelter_id, 'name': name})
+        try:
+            save_shelters()
+        except OSError:
+            shelters.pop()
+            return render_template(
+                'shelter_register.html',
+                error=True,
+                message='避難所情報を保存できませんでした。'
+            )
+
+        return render_template(
+            'shelter_register.html',
+            success=True,
+            message='避難所を登録しました。'
+        )
+
     return render_template('shelter_register.html')
 
 # 避難所検索ページ
@@ -292,6 +337,15 @@ def shelter_search():
 @app.route('/all_shelters')
 def all_shelters():
     return render_template('search_results.html', results=shelters)
+
+# 避難経路表示ページ
+@app.route('/evacuation_route')
+def evacuation_route():
+    return render_template(
+        'evacuation_route.html',
+        shelters=shelters,
+        hazards=hazards
+    )
 
 
 # 指示ボード：住民向けの指示を一覧で確認する

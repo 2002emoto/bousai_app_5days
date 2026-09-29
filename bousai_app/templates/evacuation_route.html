@@ -1,0 +1,456 @@
+{% extends "base.html" %}
+
+{% block title %}避難経路表示画面 - 防災アプリ{% endblock %}
+
+{% block content %}
+<style>
+  .route-page { display: grid; gap: 16px; }
+  .route-heading h2 { margin: 0; color: #183532; font-size: 27px; }
+  .route-heading p { margin: 6px 0 0; color: #657a75; font-size: 13px; }
+    .hazard-notice { margin: 0; padding: 10px 12px; border-left: 3px solid #c33e32; color: #88332d; background: #fff3f0; font-size: 12px; }
+  .route-layout { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(280px, .8fr); gap: 16px; align-items: start; }
+  .route-panel, .distance-panel { min-width: 0; padding: 17px; border: 1px solid #dbe5e0; border-radius: 8px; background: white; box-shadow: 0 5px 20px rgba(34, 73, 117, .06); }
+  .route-tabs { display: flex; gap: 5px; padding: 4px; margin-bottom: 13px; border-radius: 6px; background: #eff4f1; }
+  .route-tab { min-height: 38px; flex: 1; border: 0; border-radius: 4px; color: #536760; background: transparent; font: inherit; font-size: 12px; font-weight: 700; cursor: pointer; }
+  .route-tab[aria-selected="true"] { color: #07594f; background: white; box-shadow: 0 1px 4px rgba(24, 53, 50, .12); }
+  .origin-panel { min-height: 100px; }
+  .origin-panel[hidden] { display: none; }
+  .origin-panel p { margin: 4px 0 12px; color: #657a75; font-size: 12px; }
+  .home-form label { display: block; margin-bottom: 6px; color: #344b45; font-size: 12px; font-weight: 700; }
+  .home-form-row { display: flex; gap: 8px; }
+  .home-form input { min-width: 0; min-height: 40px; flex: 1; padding: 8px 10px; border: 1px solid #cbd8d2; border-radius: 5px; font: inherit; font-size: 13px; }
+  .route-action { min-height: 40px; padding: 8px 13px; border: 1px solid #07594f; border-radius: 5px; color: white; background: #07594f; font: inherit; font-size: 12px; font-weight: 700; cursor: pointer; }
+  .route-action:hover { background: #064941; }
+  .route-action:disabled { border-color: #c7d0cc; color: #75827d; background: #e9eeeb; cursor: wait; }
+  .home-form .route-action { flex: 0 0 auto; }
+  #routeMap { width: 100%; height: 405px; border-radius: 6px; background: #e7efeb; }
+    .map-legend { display: flex; gap: 15px; flex-wrap: wrap; margin-top: 9px; color: #63766f; font-size: 11px; }
+    .map-legend span { display: inline-flex; align-items: center; gap: 6px; }
+    .legend-symbol { width: 11px; height: 11px; border: 2px solid #b9362c; border-radius: 50%; background: rgba(211, 69, 54, .2); }
+    .legend-symbol.shelter { border-color: #198754; background: #198754; }
+    .legend-symbol.origin { border-color: #247bb5; background: #247bb5; }
+  .route-status { min-height: 42px; display: flex; align-items: center; margin: 10px 0 0; padding: 9px 11px; border-radius: 5px; color: #4e625d; background: #f2f6f4; font-size: 12px; }
+  .route-status[data-state="error"] { color: #a33028; background: #fff1ee; }
+  .route-status[data-state="success"] { color: #08724f; background: #edf7f1; }
+  .distance-panel h3 { margin: 0; color: #183532; font-size: 16px; }
+  .distance-intro { margin: 4px 0 12px; color: #657a75; font-size: 11px; }
+  .distance-list { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+  .distance-item { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 9px; padding: 11px; border: 1px solid #e2eae6; border-radius: 5px; }
+    .distance-item.is-selected { border-color: #7db5a3; background: #f1f8f4; }
+  .distance-name { display: block; color: #233c37; font-size: 12px; font-weight: 700; }
+  .distance-note, .distance-time { display: block; margin-top: 3px; color: #71807a; font-size: 10px; }
+  .distance-value { color: #07594f; font-size: 15px; font-weight: 800; white-space: nowrap; }
+  .distance-item button { grid-column: 1 / -1; justify-self: start; padding: 4px 0; border: 0; color: #176a9f; background: transparent; font: inherit; font-size: 11px; font-weight: 700; cursor: pointer; }
+  .distance-empty { margin: 0; padding: 13px; border-radius: 5px; color: #71807a; background: #f5f7f6; font-size: 12px; line-height: 1.6; }
+  .route-help { margin: 0; color: #657a75; font-size: 11px; line-height: 1.6; }
+  @media (max-width: 760px) { .route-layout { grid-template-columns: 1fr; } }
+  @media (max-width: 520px) {
+    .route-heading h2 { font-size: 23px; }
+    .route-panel, .distance-panel { padding: 12px; }
+    .home-form-row { flex-direction: column; }
+    .home-form .route-action { width: 100%; }
+    #routeMap { height: min(390px, 100vw); }
+  }
+</style>
+
+<section class="route-page">
+  <header class="route-heading">
+    <h2>避難経路表示画面</h2>
+    <p>出発地点を選ぶと、登録済み避難所までの徒歩距離と最短経路を表示します。</p>
+  </header>
+    <p class="hazard-notice">危険場所：伏見駅から半径1km以内は通行不可として経路を計算します。</p>
+
+  <div class="route-layout">
+    <section class="route-panel" aria-label="出発地と地図">
+      <div class="route-tabs" role="tablist" aria-label="出発地の選択方法">
+        <button class="route-tab" id="currentTab" type="button" role="tab" aria-selected="true" aria-controls="currentPanel">現在地から</button>
+        <button class="route-tab" id="homeTab" type="button" role="tab" aria-selected="false" aria-controls="homePanel">自宅から</button>
+      </div>
+
+      <section class="origin-panel" id="currentPanel" role="tabpanel" aria-labelledby="currentTab">
+        <p>現在地を取得して、近くの避難所を検索します。</p>
+        <button class="route-action" id="currentLocationButton" type="button">現在地から避難先を検索</button>
+      </section>
+
+      <section class="origin-panel" id="homePanel" role="tabpanel" aria-labelledby="homeTab" hidden>
+        <form class="home-form" id="homeForm">
+          <label for="homeAddress">自宅の住所</label>
+          <div class="home-form-row">
+            <input id="homeAddress" name="homeAddress" type="text" autocomplete="street-address" placeholder="名古屋市○○区..." required>
+            <button class="route-action" type="submit">住所から検索</button>
+          </div>
+        </form>
+      </section>
+
+      <div id="routeMap" aria-label="避難所と避難経路の地図"></div>
+            <div class="map-legend" aria-label="地図の凡例">
+                <span><i class="legend-symbol shelter" aria-hidden="true"></i>避難所</span>
+                <span><i class="legend-symbol origin" aria-hidden="true"></i>出発地</span>
+                <span><i class="legend-symbol" aria-hidden="true"></i>危険範囲（半径1km）</span>
+            </div>
+      <p id="routeStatus" class="route-status" role="status" aria-live="polite">現在地から検索するか、自宅住所タブに住所を入力してください。</p>
+    </section>
+
+    <section class="distance-panel" aria-labelledby="distanceHeading">
+      <h3 id="distanceHeading">避難所までの距離</h3>
+      <p class="distance-intro">徒歩経路の短い順に表示します。</p>
+      <ul class="distance-list" id="distanceList" aria-live="polite">
+                {% for shelter in shelters %}
+                <li class="distance-item" data-shelter-id="{{ shelter.id }}">
+                    <div>
+                        <span class="distance-name">{{ shelter.name }}</span>
+                        <span class="distance-time">出発地を指定すると距離を計算します</span>
+                    </div>
+                    <span class="distance-value">--</span>
+                </li>
+                {% else %}
+                <li class="distance-empty">避難所が登録されていません。</li>
+                {% endfor %}
+      </ul>
+    </section>
+  </div>
+
+  <p class="route-help">現在地の取得には位置情報の許可が必要です。自宅住所の検索と徒歩経路の計算にはインターネット接続を使用します。</p>
+</section>
+
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const shelters = {{ shelters | tojson }};
+    const hazards = {{ hazards | tojson }};
+    const map = L.map('routeMap').setView([35.173156, 136.881767], 13);
+    const status = document.getElementById('routeStatus');
+    const distanceList = document.getElementById('distanceList');
+    const searchButtons = document.querySelectorAll('.route-action');
+    let originMarker = null;
+    let routeLayer = null;
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© OpenStreetMap contributors',
+        referrerPolicy: 'strict-origin-when-cross-origin'
+    }).addTo(map);
+
+    const shelterLayer = L.featureGroup().addTo(map);
+    shelters.forEach(shelter => {
+        L.circleMarker([shelter.lat, shelter.lon], {
+            radius: 7,
+            color: '#ffffff',
+            weight: 2,
+            fillColor: '#198754',
+            fillOpacity: 1
+        }).bindPopup(shelter.name).addTo(shelterLayer);
+    });
+
+    const hazardLayer = L.featureGroup().addTo(map);
+    hazards.forEach(hazard => {
+        L.circle([hazard.lat, hazard.lon], {
+            radius: hazard.radius_m,
+            color: '#b9362c',
+            weight: 2,
+            dashArray: '7 6',
+            fillColor: '#d34536',
+            fillOpacity: 0.18
+        }).bindPopup(`${hazard.name}：半径${hazard.radius_m / 1000}kmは通行不可`).addTo(hazardLayer);
+        L.circleMarker([hazard.lat, hazard.lon], {
+            radius: 6,
+            color: '#ffffff',
+            weight: 2,
+            fillColor: '#b9362c',
+            fillOpacity: 1
+        }).bindTooltip(`危険場所：${hazard.name}`).addTo(hazardLayer);
+    });
+    const visibleLayers = L.featureGroup([...shelterLayer.getLayers(), ...hazardLayer.getLayers()]);
+    if (visibleLayers.getLayers().length) map.fitBounds(visibleLayers.getBounds().pad(0.18));
+
+    function setStatus(message, state) {
+        status.textContent = message;
+        status.dataset.state = state || 'default';
+    }
+
+    function setBusy(isBusy) {
+        searchButtons.forEach(button => { button.disabled = isBusy; });
+    }
+
+    function distanceFromHazard(point, hazard) {
+        const latitudeScale = 110540;
+        const longitudeScale = 111320 * Math.cos(hazard.lat * Math.PI / 180);
+        const x = (point[0] - hazard.lon) * longitudeScale;
+        const y = (point[1] - hazard.lat) * latitudeScale;
+        return Math.hypot(x, y);
+    }
+
+    function segmentDistanceFromHazard(start, end, hazard) {
+        const latitudeScale = 110540;
+        const longitudeScale = 111320 * Math.cos(hazard.lat * Math.PI / 180);
+        const startX = (start[0] - hazard.lon) * longitudeScale;
+        const startY = (start[1] - hazard.lat) * latitudeScale;
+        const endX = (end[0] - hazard.lon) * longitudeScale;
+        const endY = (end[1] - hazard.lat) * latitudeScale;
+        const deltaX = endX - startX;
+        const deltaY = endY - startY;
+        const lengthSquared = deltaX * deltaX + deltaY * deltaY;
+        const projection = lengthSquared
+            ? Math.max(0, Math.min(1, -(startX * deltaX + startY * deltaY) / lengthSquared))
+            : 0;
+        return Math.hypot(startX + projection * deltaX, startY + projection * deltaY);
+    }
+
+    function routeAvoidsHazards(route) {
+        const coordinates = route.geometry.coordinates;
+        return hazards.every(hazard => {
+            const exclusionRadius = hazard.radius_m + 15;
+            for (let index = 0; index < coordinates.length; index += 1) {
+                if (distanceFromHazard(coordinates[index], hazard) <= exclusionRadius) return false;
+                if (index > 0 && segmentDistanceFromHazard(coordinates[index - 1], coordinates[index], hazard) <= exclusionRadius) return false;
+            }
+            return true;
+        });
+    }
+
+    function createExclusionPolygon(hazard) {
+        const vertexCount = 32;
+        const radius = (hazard.radius_m + 35) / Math.cos(Math.PI / vertexCount);
+        const longitudeScale = 111320 * Math.cos(hazard.lat * Math.PI / 180);
+        const polygon = Array.from({ length: vertexCount }, (_, index) => {
+            const angle = index * 2 * Math.PI / vertexCount;
+            const latitude = hazard.lat + Math.sin(angle) * radius / 110540;
+            const longitude = hazard.lon + Math.cos(angle) * radius / longitudeScale;
+            return [longitude, latitude];
+        });
+        polygon.push(polygon[0]);
+        return polygon;
+    }
+
+    function decodePolyline(encoded, precision) {
+        const coordinates = [];
+        const scale = 10 ** precision;
+        let index = 0;
+        let latitude = 0;
+        let longitude = 0;
+
+        while (index < encoded.length) {
+            const deltas = [];
+            for (let coordinate = 0; coordinate < 2; coordinate += 1) {
+                let result = 0;
+                let shift = 0;
+                let byte;
+                do {
+                    byte = encoded.charCodeAt(index) - 63;
+                    index += 1;
+                    result |= (byte & 0x1f) << shift;
+                    shift += 5;
+                } while (byte >= 0x20);
+                deltas.push(result & 1 ? ~(result >> 1) : result >> 1);
+            }
+            latitude += deltas[0];
+            longitude += deltas[1];
+            coordinates.push([longitude / scale, latitude / scale]);
+        }
+        return coordinates;
+    }
+
+    async function safeRouteToShelter(origin, shelter) {
+        if (hazards.some(hazard => distanceFromHazard([shelter.lon, shelter.lat], hazard) <= hazard.radius_m + 15)) {
+            return { shelter, blocked: true };
+        }
+
+        const request = {
+            locations: [
+                { lat: origin.lat, lon: origin.lng },
+                { lat: shelter.lat, lon: shelter.lon }
+            ],
+            costing: 'pedestrian',
+            units: 'kilometers',
+            shape_format: 'polyline6',
+            exclude_polygons: hazards.map(createExclusionPolygon)
+        };
+        const url = `https://valhalla1.openstreetmap.de/route?json=${encodeURIComponent(JSON.stringify(request))}`;
+        const response = await fetch(url);
+        if (!response.ok) throw new Error('route request failed');
+        const data = await response.json();
+        const leg = data.trip && data.trip.legs && data.trip.legs[0];
+        if (!leg || data.trip.status !== 0 || !leg.shape) throw new Error('safe route not found');
+
+        const route = {
+            distance: leg.summary.length * 1000,
+            duration: leg.summary.time,
+            geometry: {
+                type: 'LineString',
+                coordinates: decodePolyline(leg.shape, 6)
+            }
+        };
+        if (!routeAvoidsHazards(route)) throw new Error('route entered exclusion area');
+        return { shelter, route, detoured: hazards.length > 0 };
+    }
+
+    function displayRoute(result, isNearest) {
+        if (routeLayer) map.removeLayer(routeLayer);
+        routeLayer = L.geoJSON(result.route.geometry, {
+            style: { color: '#176a9f', weight: 5, opacity: 0.88 }
+        }).addTo(map);
+        map.fitBounds(routeLayer.getBounds(), { padding: [30, 30] });
+        document.querySelectorAll('.distance-item').forEach(item => {
+            item.classList.toggle('is-selected', Number(item.dataset.shelterId) === result.shelter.id);
+        });
+        const distance = (result.route.distance / 1000).toFixed(1);
+        const duration = Math.max(1, Math.round(result.route.duration / 60));
+        const routeLabel = isNearest ? '最短徒歩経路' : '徒歩経路';
+        const hazardLabel = result.detoured ? '（危険範囲を迂回）' : '';
+        setStatus(`${result.shelter.name}までの${routeLabel}${hazardLabel}を表示中（約${distance} km・約${duration}分）`, 'success');
+    }
+
+    function renderDistances(results, failedShelters) {
+        distanceList.replaceChildren();
+        results.forEach((result, index) => {
+            const item = document.createElement('li');
+            item.className = `distance-item${index === 0 ? ' is-selected' : ''}`;
+            item.dataset.shelterId = result.shelter.id;
+
+            const details = document.createElement('div');
+            const name = document.createElement('span');
+            name.className = 'distance-name';
+            name.textContent = result.shelter.name;
+            details.append(name);
+            if (result.shelter.location_note) {
+                const note = document.createElement('span');
+                note.className = 'distance-note';
+                note.textContent = result.shelter.location_note;
+                details.append(note);
+            }
+            const time = document.createElement('span');
+            time.className = 'distance-time';
+            time.textContent = `徒歩 約${Math.max(1, Math.round(result.route.duration / 60))}分`;
+            details.append(time);
+
+            const distance = document.createElement('span');
+            distance.className = 'distance-value';
+            distance.textContent = `${(result.route.distance / 1000).toFixed(1)} km`;
+            item.append(details, distance);
+
+            const showRouteButton = document.createElement('button');
+            showRouteButton.type = 'button';
+            showRouteButton.textContent = index === 0 ? '最短ルートを表示中' : 'この避難所への経路を表示';
+            showRouteButton.addEventListener('click', () => displayRoute(result, index === 0));
+            item.append(showRouteButton);
+            distanceList.append(item);
+        });
+
+        failedShelters.forEach(({ shelter, blocked, originBlocked }) => {
+            const item = document.createElement('li');
+            item.className = 'distance-item';
+            const details = document.createElement('span');
+            details.className = 'distance-name';
+            details.textContent = shelter.name;
+            const unavailable = document.createElement('span');
+            unavailable.className = 'distance-time';
+            unavailable.textContent = blocked
+                ? '危険範囲内のため通行不可'
+                : originBlocked
+                    ? '出発地が危険範囲内のため計算不可'
+                    : '安全な経路を取得できません';
+            item.append(details, unavailable);
+            distanceList.append(item);
+        });
+    }
+
+    async function searchNearestShelters(origin, originName) {
+        if (!shelters.length) {
+            setBusy(false);
+            setStatus('登録されている避難所がありません。', 'error');
+            return;
+        }
+        setBusy(true);
+        const originHazard = hazards.find(hazard => distanceFromHazard([origin.lng, origin.lat], hazard) <= hazard.radius_m + 15);
+        if (originHazard) {
+            renderDistances([], shelters.map(shelter => ({ shelter, originBlocked: true })));
+            setStatus(`出発地が${originHazard.name}の危険範囲内です。範囲外へ移動してから再検索してください。`, 'error');
+            setBusy(false);
+            return;
+        }
+        setStatus(`${originName}から各避難所までの徒歩距離を計算しています...`);
+        if (originMarker) map.removeLayer(originMarker);
+        originMarker = L.circleMarker(origin, {
+            radius: 8,
+            color: '#ffffff',
+            weight: 3,
+            fillColor: '#247bb5',
+            fillOpacity: 1
+        }).bindPopup(originName).addTo(map);
+
+        const checks = await Promise.all(shelters.map(async shelter => {
+            try {
+                return await safeRouteToShelter(origin, shelter);
+            } catch (error) {
+                return { shelter, error: true };
+            }
+        }));
+
+        const routeResults = checks.filter(check => check.route)
+            .sort((left, right) => left.route.distance - right.route.distance);
+        const failedShelters = checks.filter(check => check.blocked || check.error);
+        renderDistances(routeResults, failedShelters);
+
+        if (routeResults.length) {
+            displayRoute(routeResults[0], true);
+            if (failedShelters.some(item => item.blocked)) {
+                setStatus(`${routeResults[0].shelter.name}への危険範囲外の最短経路を表示中です。危険範囲内の避難所は除外しました。`, 'success');
+            } else if (failedShelters.length) {
+                setStatus(`${routeResults[0].shelter.name}への最短経路を表示中です。一部の避難所の距離は取得できませんでした。`, 'success');
+            }
+        } else {
+            setStatus('徒歩経路を取得できませんでした。通信状況を確認して再度お試しください。', 'error');
+        }
+        setBusy(false);
+    }
+
+    document.getElementById('currentLocationButton').addEventListener('click', function() {
+        if (!navigator.geolocation) {
+            setStatus('このブラウザーでは現在地を取得できません。自宅住所タブをご利用ください。', 'error');
+            return;
+        }
+        setBusy(true);
+        setStatus('現在地を取得しています...');
+        navigator.geolocation.getCurrentPosition(position => {
+            const origin = L.latLng(position.coords.latitude, position.coords.longitude);
+            map.setView(origin, 13);
+            searchNearestShelters(origin, '現在地');
+        }, () => {
+            setBusy(false);
+            setStatus('現在地を取得できませんでした。位置情報を許可するか、自宅住所タブをご利用ください。', 'error');
+        }, { enableHighAccuracy: true, timeout: 12000 });
+    });
+
+    document.getElementById('homeForm').addEventListener('submit', async function(event) {
+        event.preventDefault();
+        const address = document.getElementById('homeAddress').value.trim();
+        if (!address) return;
+        setBusy(true);
+        setStatus('住所を検索しています...');
+        const query = new URLSearchParams({ q: `${address}, 名古屋市, 愛知県, 日本`, format: 'jsonv2', limit: '1', countrycodes: 'jp' });
+        try {
+            const response = await fetch(`https://nominatim.openstreetmap.org/search?${query}`);
+            if (!response.ok) throw new Error('address lookup failed');
+            const matches = await response.json();
+            if (!matches.length) throw new Error('address not found');
+            const origin = L.latLng(Number(matches[0].lat), Number(matches[0].lon));
+            map.setView(origin, 14);
+            await searchNearestShelters(origin, '自宅');
+        } catch (error) {
+            setBusy(false);
+            setStatus('住所を検索できませんでした。住所を詳しく入力して再度お試しください。', 'error');
+        }
+    });
+
+    document.querySelectorAll('.route-tab').forEach(tab => {
+        tab.addEventListener('click', function() {
+            document.querySelectorAll('.route-tab').forEach(item => {
+                item.setAttribute('aria-selected', String(item === tab));
+            });
+            document.getElementById('currentPanel').hidden = tab.id !== 'currentTab';
+            document.getElementById('homePanel').hidden = tab.id !== 'homeTab';
+        });
+    });
+});
+</script>
+{% endblock %}

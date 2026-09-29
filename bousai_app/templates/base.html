@@ -4,31 +4,268 @@
   <meta charset="utf-8">
   <title>{% block title %}防災アプリ{% endblock %}</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #183532;
+      --muted: #657a75;
+      --blue: #176a9f;
+      --green: #087a68;
+      --green-dark: #07594f;
+      --red: #b33e34;
+      --paper: #f3f7f4;
+      --line: #dbe5e0;
+      --white: #fff;
+      font-family: "BIZ UDPGothic", "Noto Sans JP", "Yu Gothic", sans-serif;
+      color: var(--ink);
+      background: var(--paper);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      min-width: 320px;
+      min-height: 100vh;
+      margin: 0;
+      background-color: var(--paper);
+      background-image: repeating-linear-gradient(135deg, transparent 0 30px, rgba(8, 122, 104, .025) 30px 31px);
+    }
+
+    a { color: var(--green-dark); }
+
+    .site-header { background: var(--white); border-bottom: 1px solid var(--line); }
+
+    .header-inner {
+      width: min(1220px, calc(100% - 48px));
+      min-height: 76px;
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 24px;
+    }
+
+    .brand { display: flex; align-items: center; gap: 11px; text-decoration: none; flex: 0 0 auto; }
+    .brand-mark { width: 38px; height: 38px; display: grid; place-items: center; border-radius: 10px; background: #e6f2ee; color: var(--green-dark); font-size: 22px; font-weight: 800; }
+    .brand h1 { margin: 0; color: var(--blue); font-size: 19px; line-height: 1.25; }
+    .brand small { display: block; margin-top: 2px; color: var(--muted); font-size: 9px; font-weight: 700; }
+
+    .site-nav { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 5px; font-size: 13px; }
+    .site-nav > a, .nav-account a { padding: 8px 10px; border-radius: 5px; color: var(--ink); font-weight: 700; text-decoration: none; white-space: nowrap; }
+    .site-nav > a:hover, .site-nav > a:focus-visible, .nav-account a:hover { background: #eaf3ef; outline: none; }
+    .nav-account { padding-left: 10px; border-left: 1px solid var(--line); color: var(--muted); font-size: 11px; white-space: nowrap; }
+    .nav-account a { color: var(--blue); }
+
+    main { width: min(1220px, calc(100% - 48px)); margin: 0 auto; padding: 34px 0 56px; }
+    .dashboard-heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 22px; margin-bottom: 22px; }
+    .eyebrow, .section-kicker { margin: 0 0 5px; color: var(--green); font-size: 11px; font-weight: 800; }
+    .dashboard-heading h2 { margin: 0; font-size: 30px; line-height: 1.35; }
+    .dashboard-heading p:last-child { margin: 6px 0 0; color: var(--muted); font-size: 13px; }
+
+    .primary-action, .text-action { min-height: 42px; display: inline-flex; align-items: center; justify-content: center; padding: 8px 15px; border: 1px solid var(--green-dark); border-radius: 5px; font-size: 13px; font-weight: 800; text-decoration: none; white-space: nowrap; }
+    .primary-action { color: white; background: var(--green-dark); }
+    .primary-action:hover, .primary-action:focus-visible { background: #064941; }
+    .text-action { min-height: 36px; border-color: var(--line); color: var(--green-dark); background: white; }
+
+    .dashboard-grid { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(300px, .8fr); gap: 18px; align-items: stretch; }
+    .panel { min-width: 0; overflow: hidden; border: 1px solid var(--line); border-radius: 7px; background: var(--white); box-shadow: 0 10px 28px rgba(24, 53, 50, .07); }
+    .panel-heading { min-height: 76px; display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 15px 19px; border-bottom: 1px solid var(--line); }
+    .panel-heading h3 { margin: 0; font-size: 16px; }
+    .section-kicker { margin-bottom: 1px; }
+    #shelterMap { width: 100%; height: 420px; background: #e7efeb; }
+    .map-caption { display: flex; justify-content: space-between; gap: 12px; padding: 9px 17px; color: var(--muted); font-size: 10px; }
+    .update-label { display: inline-flex; align-items: center; gap: 7px; color: var(--muted); font-size: 10px; white-space: nowrap; }
+    .update-dot, .state-dot { width: 8px; height: 8px; border-radius: 50%; background: #25886d; }
+
+    .weather-body { padding: 19px; }
+    .weather-state { display: flex; align-items: flex-start; gap: 11px; margin-bottom: 17px; padding: 14px; border: 1px solid #cde4d7; border-radius: 5px; background: #eff7f1; }
+    .weather-state.is-alert { border-color: #edc9be; background: #fff3ef; }
+    .weather-state.is-alert .state-dot { background: var(--red); }
+    .state-dot { flex: 0 0 auto; margin-top: 7px; }
+    .weather-state strong { display: block; font-size: 14px; }
+    .weather-state p { margin: 3px 0 0; color: var(--muted); font-size: 11px; }
+    .warning-list { display: grid; gap: 8px; margin: 0 0 17px; padding: 0; list-style: none; }
+    .warning-list li { display: flex; justify-content: space-between; gap: 12px; padding: 10px 11px; border-left: 3px solid var(--red); background: #fff7f4; font-size: 12px; font-weight: 700; }
+    .warning-list span { color: var(--red); font-size: 10px; white-space: nowrap; }
+    .weather-meta { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 0; padding-top: 13px; border-top: 1px solid var(--line); }
+    .weather-meta div { min-width: 0; }
+    .weather-meta dt { color: var(--muted); font-size: 10px; }
+    .weather-meta dd { margin: 3px 0 0; font-size: 11px; font-weight: 700; }
+    .weather-loading, .weather-error { color: var(--muted); font-size: 13px; }
+    .weather-error { color: var(--red); }
+
+    .quick-links { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); margin-top: 18px; border-block: 1px solid var(--line); background: rgba(255, 255, 255, .8); }
+    .quick-links a { min-height: 62px; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 17px; color: var(--ink); font-size: 12px; font-weight: 800; text-decoration: none; }
+    .quick-links a + a { border-left: 1px solid var(--line); }
+    .quick-links a:hover { background: #eaf3ef; }
+    .quick-links span { color: var(--green); font-size: 17px; }
+
+    @media (max-width: 800px) {
+      .header-inner { align-items: flex-start; flex-direction: column; gap: 7px; padding: 13px 0; }
+      .site-nav { justify-content: flex-start; }
+      .dashboard-grid { grid-template-columns: 1fr; }
+      #shelterMap { height: 350px; }
+    }
+
+    @media (max-width: 520px) {
+      .header-inner, main { width: calc(100% - 28px); }
+      main { padding: 24px 0 38px; }
+      .site-nav { gap: 0; }
+      .site-nav > a, .nav-account a { padding: 7px 5px; font-size: 11px; }
+      .nav-account { padding-left: 5px; font-size: 10px; }
+      .dashboard-heading { align-items: flex-start; flex-direction: column; gap: 13px; }
+      .dashboard-heading h2 { font-size: 25px; }
+      .dashboard-heading .primary-action { width: 100%; }
+      .panel-heading, .weather-body { padding: 14px; }
+      #shelterMap { height: 300px; }
+      .map-caption { flex-direction: column; gap: 1px; }
+      .quick-links { grid-template-columns: 1fr; }
+      .quick-links a { min-height: 52px; }
+      .quick-links a + a { border-top: 1px solid var(--line); border-left: 0; }
+    }
+
+    body { background: #fff; }
+    .site-header { height: 54px; background: #2d58a4; border: 0; }
+    .header-inner { width: min(1080px, calc(100% - 40px)); min-height: 54px; }
+    .brand h1 { color: white; font-size: 19px; }
+    .brand small, .brand-mark { display: none; }
+    .menu-toggle {
+      width: 40px;
+      height: 40px;
+      display: grid;
+      place-items: center;
+      padding: 0;
+      border: 0;
+      background: transparent;
+      cursor: pointer;
+    }
+    .menu-icon {
+      width: 18px;
+      height: 14px;
+      background: linear-gradient(to bottom, white 0 2px, transparent 2px 6px, white 6px 8px, transparent 8px 12px, white 12px 14px);
+    }
+    .site-nav {
+      display: none;
+      position: absolute;
+      z-index: 1200;
+      top: 60px;
+      right: max(20px, calc((100% - 1080px) / 2));
+      min-width: 220px;
+      padding: 8px;
+      flex-direction: column;
+      align-items: stretch;
+      gap: 2px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: white;
+      box-shadow: 0 8px 24px rgba(24, 53, 50, .16);
+    }
+    .site-nav.is-open { display: flex; }
+    .site-nav > a, .nav-account a { padding: 10px 12px; }
+    .nav-account { padding: 8px 12px 0; border: 0; border-top: 1px solid var(--line); }
+    main { width: min(710px, calc(100% - 32px)); padding: 24px 0 40px; }
+    .dashboard-grid { grid-template-columns: minmax(0, 1fr); gap: 26px; }
+    .panel { padding: 17px 20px 23px; border: 0; border-radius: 15px; box-shadow: 0 5px 24px rgba(34, 73, 117, .09); }
+    .panel-heading { min-height: 0; padding: 0 0 14px; border: 0; }
+    .panel-heading h3 { color: #2e5da8; font-size: 17px; }
+    .section-kicker { display: none; }
+    #shelterMap { height: 282px; border-radius: 9px; }
+    .map-caption { display: none; }
+    .weather-body { padding: 14px; border-radius: 10px; background: #f5f6f7; }
+    .weather-state { margin: 0; padding: 0; border: 0; background: transparent; }
+    .weather-state.is-alert { background: transparent; }
+    .weather-state strong { color: #198f4c; font-size: 14px; }
+    .weather-state p { color: #34495e; font-size: 14px; font-weight: 700; }
+    .state-dot { width: 13px; height: 13px; margin-top: 4px; background: #29a454; }
+    .weather-state.is-alert .state-dot { background: var(--red); }
+    .weather-meta { grid-template-columns: 1fr; gap: 5px; margin-top: 12px; padding: 0; border: 0; }
+    .weather-meta div { display: flex; gap: 6px; align-items: baseline; }
+    .weather-meta dt, .weather-meta dd { margin: 0; color: #6a7885; font-size: 11px; }
+    .weather-meta dt::after { content: ":"; }
+    .update-label { color: #249d4d; font-size: 13px; font-weight: 700; }
+    .update-dot { width: 13px; height: 13px; background: transparent; }
+    .quick-links { display: none; }
+    .panel-heading h3 { display: flex; align-items: center; gap: 8px; color: #2e5da8; font-size: 17px; }
+    .map-pin-icon, .weather-location > span {
+      position: relative;
+      width: 12px;
+      height: 12px;
+      display: inline-block;
+      flex: 0 0 auto;
+      border-radius: 50% 50% 50% 0;
+      background: #2e5da8;
+      transform: rotate(-45deg);
+    }
+    .map-pin-icon::after, .weather-location > span::after {
+      content: "";
+      position: absolute;
+      width: 4px;
+      height: 4px;
+      top: 4px;
+      left: 4px;
+      border-radius: 50%;
+      background: white;
+    }
+    .weather-icon { color: #2e5da8; font-size: 20px; line-height: 1; }
+    .refresh-icon { color: #249d4d; font-size: 19px; line-height: 1; }
+    .weather-location { display: flex; align-items: center; gap: 8px; margin: 0 0 13px; color: #34495e; font-size: 14px; font-weight: 700; }
+    .weather-state { align-items: center; gap: 8px; margin: 0 0 12px; }
+    .weather-state strong { color: #198f4c; font-size: 13px; }
+    .weather-state.is-alert strong { color: var(--red); }
+    .status-icon { width: 14px; height: 14px; display: inline-grid; place-items: center; flex: 0 0 auto; border-radius: 50%; color: white; background: #29a454; font-size: 10px; font-weight: 800; }
+    .weather-state.is-alert .status-icon { background: var(--red); }
+    .weather-meta { display: flex; flex-direction: column; gap: 5px; margin: 0; padding: 0; border: 0; }
+    .weather-meta-line { margin: 0; color: #6a7885; font-size: 11px; }
+    .weather-meta-line span { display: inline-block; width: 15px; color: #778592; }
+
+    @media (max-width: 520px) {
+      .header-inner { width: calc(100% - 32px); flex-direction: row; align-items: center; padding: 0; }
+      main { width: calc(100% - 28px); padding-top: 20px; }
+      .panel { padding: 16px; border-radius: 13px; }
+      #shelterMap { height: min(282px, 62vw); }
+      .dashboard-grid { gap: 24px; }
+      .update-label { font-size: 11px; }
+      .weather-body { padding: 13px; }
+    }
+  </style>
 </head>
 <body>
-  <!-- ヘッダー -->
-  <h1>防災アプリ</h1>
-
-  <!-- ナビゲーション -->
-  <nav>
-    <a href="/">ホーム</a> |
-    <a href="/shelter_search">避難所検索</a> |
-    <a href="/shelter_register">避難所登録</a> |
-    <a href="/board">指示・発信ボード</a>
-    ｜
-    {% if session.logged_in %}
-      ログイン中{% if session.username %}（{{ session.username }}）{% endif %}
-      <a href="/logout">ログアウト</a>
-    {% else %}
-      未ログイン
-      <a href="/login">ログイン</a>
-    {% endif %}
-  </nav>
-  <hr>
-
+  <header class="site-header">
+    <div class="header-inner">
+      <a class="brand" href="/">
+        <h1>防災アプリ</h1>
+      </a>
+      <button class="menu-toggle" type="button" aria-label="メニューを開く" aria-expanded="false" aria-controls="siteNav">
+        <span class="menu-icon" aria-hidden="true"></span>
+      </button>
+      <nav class="site-nav" id="siteNav" aria-label="メインナビゲーション">
+        <a href="/">ホーム</a>
+        <a href="/shelter_search">避難所検索</a>
+        <a href="/evacuation_route">避難経路表示</a>
+        <a href="/shelter_register">避難所登録</a>
+        <a href="/board">指示・発信ボード</a>
+        <span class="nav-account">
+          {% if session.logged_in %}
+            {{ session.username or 'ログイン中' }} <a href="/logout">ログアウト</a>
+          {% else %}
+            未ログイン <a href="/login">ログイン</a>
+          {% endif %}
+        </span>
+      </nav>
+    </div>
+  </header>
   <main>
-    <!-- ここに子テンプレートの content が入る -->
     {% block content %}{% endblock %}
   </main>
+  <script>
+    const menuToggle = document.querySelector('.menu-toggle');
+    const siteNav = document.querySelector('#siteNav');
+    menuToggle.addEventListener('click', function() {
+      const isOpen = menuToggle.getAttribute('aria-expanded') === 'true';
+      menuToggle.setAttribute('aria-expanded', String(!isOpen));
+      menuToggle.setAttribute('aria-label', isOpen ? 'メニューを開く' : 'メニューを閉じる');
+      siteNav.classList.toggle('is-open', !isOpen);
+    });
+  </script>
 </body>
 </html>
